@@ -11,7 +11,7 @@ import json
 import os
 from datetime import date
 from functools import wraps
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from mcp.server.fastmcp import FastMCP
 from monarchmoney import MonarchMoney
