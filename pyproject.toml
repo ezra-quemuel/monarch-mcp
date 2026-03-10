@@ -1,12 +1,16 @@
 [project]
 name = "monarch-mcp"
 version = "0.1.0"
-description = "MCP server for Monarch Money"
+description = "MCP server that exposes Monarch Money financial data to Claude and other MCP clients"
 license = "MIT"
 requires-python = ">=3.10"
+authors = [
+    { name = "Ezra Quemuel" },
+]
 dependencies = [
     "mcp[cli]>=1.0.0",
     "monarchmoney>=0.1.15",
+    "gql<4.0",
 ]
 
 [build-system]

@@ -1,4 +1,11 @@
-"""MCP server for Monarch Money."""
+"""MCP server for Monarch Money.
+
+Exposes Monarch Money financial data (accounts, transactions, budgets,
+categories) as tools for Claude and other MCP clients.
+
+Requires MONARCH_EMAIL and MONARCH_PASSWORD environment variables.
+Optionally set MONARCH_MFA_SECRET for accounts with MFA enabled.
+"""
 
 import json
 import os
@@ -8,10 +15,13 @@ from typing import Optional
 from mcp.server.fastmcp import FastMCP
 from monarchmoney import MonarchMoney
 
-# Patch the broken domain in the monarchmoney library
-# (Monarch rebranded from monarchmoney.com to monarch.com)
+# Patch the broken domain in the monarchmoney library.
+# Monarch rebranded from monarchmoney.com to monarch.com, but the library
+# hasn't been updated yet.
 if hasattr(MonarchMoney, "BASE_URL") and "monarchmoney.com" in MonarchMoney.BASE_URL:
-    MonarchMoney.BASE_URL = MonarchMoney.BASE_URL.replace("api.monarchmoney.com", "api.monarch.com")
+    MonarchMoney.BASE_URL = MonarchMoney.BASE_URL.replace(
+        "api.monarchmoney.com", "api.monarch.com"
+    )
 
 mcp = FastMCP("monarch-money")
 
@@ -30,7 +40,9 @@ async def get_client() -> MonarchMoney:
     mfa_secret = os.environ.get("MONARCH_MFA_SECRET")
 
     if not email or not password:
-        raise ValueError("MONARCH_EMAIL and MONARCH_PASSWORD environment variables are required")
+        raise ValueError(
+            "MONARCH_EMAIL and MONARCH_PASSWORD environment variables are required"
+        )
 
     mm = MonarchMoney()
     await mm.login(
@@ -45,7 +57,12 @@ async def get_client() -> MonarchMoney:
 
 
 def _slim_account(acct: dict, verbosity: str) -> dict:
-    """Reduce account data based on verbosity level."""
+    """Reduce account data based on verbosity level.
+
+    Args:
+        acct: Raw account dict from the Monarch API (may be nested in node).
+        verbosity: "ultra-light", "light", or "standard".
+    """
     node = acct if "id" in acct else acct.get("node", acct)
 
     if verbosity == "ultra-light":
@@ -53,7 +70,11 @@ def _slim_account(acct: dict, verbosity: str) -> dict:
             "id": node.get("id"),
             "name": node.get("displayName") or node.get("name"),
             "balance": node.get("currentBalance") or node.get("displayBalance"),
-            "type": node.get("type", {}).get("display") if isinstance(node.get("type"), dict) else node.get("type"),
+            "type": (
+                node.get("type", {}).get("display")
+                if isinstance(node.get("type"), dict)
+                else node.get("type")
+            ),
         }
 
     if verbosity == "light":
@@ -61,9 +82,21 @@ def _slim_account(acct: dict, verbosity: str) -> dict:
             "id": node.get("id"),
             "name": node.get("displayName") or node.get("name"),
             "balance": node.get("currentBalance") or node.get("displayBalance"),
-            "type": node.get("type", {}).get("display") if isinstance(node.get("type"), dict) else node.get("type"),
-            "subtype": node.get("subtype", {}).get("display") if isinstance(node.get("subtype"), dict) else node.get("subtype"),
-            "institution": node.get("credential", {}).get("institution", {}).get("name") if isinstance(node.get("credential"), dict) else None,
+            "type": (
+                node.get("type", {}).get("display")
+                if isinstance(node.get("type"), dict)
+                else node.get("type")
+            ),
+            "subtype": (
+                node.get("subtype", {}).get("display")
+                if isinstance(node.get("subtype"), dict)
+                else node.get("subtype")
+            ),
+            "institution": (
+                node.get("credential", {}).get("institution", {}).get("name")
+                if isinstance(node.get("credential"), dict)
+                else None
+            ),
             "includeInNetWorth": node.get("includeInNetWorth"),
         }
 
@@ -71,7 +104,12 @@ def _slim_account(acct: dict, verbosity: str) -> dict:
 
 
 def _slim_transaction(txn: dict, verbosity: str) -> dict:
-    """Reduce transaction data based on verbosity level."""
+    """Reduce transaction data based on verbosity level.
+
+    Args:
+        txn: Raw transaction dict from the Monarch API (may be nested in node).
+        verbosity: "ultra-light", "light", or "standard".
+    """
     node = txn if "id" in txn else txn.get("node", txn)
 
     if verbosity == "ultra-light":
@@ -79,7 +117,11 @@ def _slim_transaction(txn: dict, verbosity: str) -> dict:
             "id": node.get("id"),
             "date": node.get("date"),
             "amount": node.get("amount"),
-            "merchant": node.get("merchant", {}).get("name") if isinstance(node.get("merchant"), dict) else node.get("merchant"),
+            "merchant": (
+                node.get("merchant", {}).get("name")
+                if isinstance(node.get("merchant"), dict)
+                else node.get("merchant")
+            ),
         }
 
     if verbosity == "light":
@@ -87,42 +129,36 @@ def _slim_transaction(txn: dict, verbosity: str) -> dict:
             "id": node.get("id"),
             "date": node.get("date"),
             "amount": node.get("amount"),
-            "merchant": node.get("merchant", {}).get("name") if isinstance(node.get("merchant"), dict) else node.get("merchant"),
-            "category": node.get("category", {}).get("name") if isinstance(node.get("category"), dict) else node.get("category"),
-            "account": node.get("account", {}).get("displayName") if isinstance(node.get("account"), dict) else node.get("account"),
+            "merchant": (
+                node.get("merchant", {}).get("name")
+                if isinstance(node.get("merchant"), dict)
+                else node.get("merchant")
+            ),
+            "category": (
+                node.get("category", {}).get("name")
+                if isinstance(node.get("category"), dict)
+                else node.get("category")
+            ),
+            "account": (
+                node.get("account", {}).get("displayName")
+                if isinstance(node.get("account"), dict)
+                else node.get("account")
+            ),
             "notes": node.get("notes"),
         }
 
-    return node
-
-
-def _slim_budget(item: dict, verbosity: str) -> dict:
-    """Reduce budget item based on verbosity level."""
-    if verbosity == "ultra-light":
-        cat = item.get("category", {})
-        return {
-            "categoryId": cat.get("id") if isinstance(cat, dict) else None,
-            "category": cat.get("name") if isinstance(cat, dict) else cat,
-            "budgeted": item.get("budgetAmount") or item.get("plannedCashFlowAmount"),
-            "actual": item.get("actualAmount") or item.get("actualCashFlowAmount"),
-        }
-
-    if verbosity == "light":
-        cat = item.get("category", {})
-        return {
-            "categoryId": cat.get("id") if isinstance(cat, dict) else None,
-            "category": cat.get("name") if isinstance(cat, dict) else cat,
-            "budgeted": item.get("budgetAmount") or item.get("plannedCashFlowAmount"),
-            "actual": item.get("actualAmount") or item.get("actualCashFlowAmount"),
-            "remaining": item.get("remainingAmount"),
-            "rolloverAmount": item.get("rolloverAmount"),
-        }
-
-    return item
+    return node  # standard: return everything
 
 
 def _extract_items(data: dict, key: str) -> list:
-    """Extract list items from GraphQL-style response (handles edges/node pattern)."""
+    """Extract list items from a GraphQL-style response.
+
+    Handles the edges/node pattern commonly used by the Monarch API.
+
+    Args:
+        data: Raw API response dict.
+        key: Top-level key to extract from.
+    """
     obj = data.get(key, data)
     if isinstance(obj, list):
         return obj
@@ -130,7 +166,9 @@ def _extract_items(data: dict, key: str) -> list:
         edges = obj.get("edges")
         if edges:
             return [e.get("node", e) for e in edges]
-        results = obj.get("results") or obj.get("allTransactions", {}).get("results", [])
+        results = obj.get("results") or obj.get(
+            "allTransactions", {}
+        ).get("results", [])
         if results:
             return results
     return [obj] if obj else []
@@ -140,8 +178,12 @@ def _extract_items(data: dict, key: str) -> list:
 async def get_accounts(verbosity: str = "light") -> str:
     """Get all financial accounts from Monarch Money.
 
+    Returns account balances, types, and institutions. Use this to see
+    a summary of all linked accounts.
+
     Args:
-        verbosity: Detail level — "ultra-light", "light", or "standard"
+        verbosity: Detail level - "ultra-light" (id/name/balance/type),
+                   "light" (adds subtype/institution), or "standard" (full API response).
     """
     mm = await get_client()
     data = await mm.get_accounts()
@@ -160,12 +202,15 @@ async def get_transactions(
 ) -> str:
     """Get transactions from Monarch Money.
 
+    Query recent transactions with optional filters for date range and
+    search terms. Returns merchant, amount, category, and account info.
+
     Args:
-        limit: Max number of transactions to return (default 50)
-        start_date: Filter start date (YYYY-MM-DD)
-        end_date: Filter end date (YYYY-MM-DD)
-        search: Search term to filter transactions
-        verbosity: Detail level — "ultra-light", "light", or "standard"
+        limit: Max number of transactions to return (default 50).
+        start_date: Filter start date (YYYY-MM-DD).
+        end_date: Filter end date (YYYY-MM-DD).
+        search: Search term to filter transactions by merchant/description.
+        verbosity: Detail level - "ultra-light", "light", or "standard".
     """
     mm = await get_client()
     data = await mm.get_transactions(
@@ -183,20 +228,26 @@ async def get_transactions(
 async def get_budgets(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    verbosity: str = "light",
 ) -> str:
     """Get budget data from Monarch Money.
 
+    Returns per-category budget amounts, actual spending, and remaining
+    amounts for the specified date range.
+
     Args:
-        start_date: Budget period start (YYYY-MM-DD). Defaults to current month.
-        end_date: Budget period end (YYYY-MM-DD). Defaults to current month.
-        verbosity: Detail level — "ultra-light", "light", or "standard"
+        start_date: Budget period start (YYYY-MM-DD). Defaults to first of current month.
+        end_date: Budget period end (YYYY-MM-DD). Defaults to today.
     """
     mm = await get_client()
     today = date.today()
     sd = start_date or today.replace(day=1).isoformat()
     ed = end_date or today.isoformat()
-    data = await mm.get_budgets(start_date=sd, end_date=ed, use_legacy_goals=False, use_v2_goals=False)
+    data = await mm.get_budgets(
+        start_date=sd,
+        end_date=ed,
+        use_legacy_goals=False,
+        use_v2_goals=False,
+    )
 
     # Build category ID -> name lookup from categoryGroups
     category_map: dict[str, str] = {}
@@ -212,7 +263,11 @@ async def get_budgets(
     for entry in monthly_by_category:
         cat_id = entry.get("category", {}).get("id")
         cat_name = category_map.get(cat_id, f"Category {cat_id}")
-        monthly = entry.get("monthlyAmounts", [{}])[0] if entry.get("monthlyAmounts") else {}
+        monthly = (
+            entry.get("monthlyAmounts", [{}])[0]
+            if entry.get("monthlyAmounts")
+            else {}
+        )
         budgeted = monthly.get("plannedCashFlowAmount") or 0
         actual = monthly.get("actualAmount") or 0
         remaining = monthly.get("remainingAmount") or 0
@@ -230,11 +285,26 @@ async def get_budgets(
 
 @mcp.tool()
 async def list_categories() -> str:
-    """List all transaction categories from Monarch Money."""
+    """List all transaction categories from Monarch Money.
+
+    Returns category IDs, names, and group names. Use this to find
+    category IDs needed for set_budget or update_transaction.
+    """
     mm = await get_client()
     data = await mm.get_transaction_categories()
     categories = _extract_items(data, "categories")
-    result = [{"id": c.get("id"), "name": c.get("name"), "group": c.get("group", {}).get("name") if isinstance(c.get("group"), dict) else c.get("group")} for c in categories]
+    result = [
+        {
+            "id": c.get("id"),
+            "name": c.get("name"),
+            "group": (
+                c.get("group", {}).get("name")
+                if isinstance(c.get("group"), dict)
+                else c.get("group")
+            ),
+        }
+        for c in categories
+    ]
     return json.dumps(result, indent=2, default=str)
 
 
@@ -247,11 +317,13 @@ async def set_budget(
 ) -> str:
     """Set a budget amount for a category in Monarch Money.
 
+    Use list_categories to find the category ID first.
+
     Args:
-        category_id: The category ID to set the budget for
-        amount: Monthly budget amount
+        category_id: The category ID to set the budget for.
+        amount: Monthly budget amount in dollars.
         start_date: Budget start date (YYYY-MM-DD). Defaults to first of current month.
-        apply_to_future: Apply this budget to all future months
+        apply_to_future: Apply this budget to all future months.
     """
     mm = await get_client()
     today = date.today()
@@ -278,15 +350,17 @@ async def update_transaction(
 ) -> str:
     """Update an existing transaction in Monarch Money.
 
+    Only the fields you provide will be updated; others remain unchanged.
+
     Args:
-        transaction_id: The transaction ID to update
-        category_id: New category ID (use list_categories to find IDs)
-        merchant_name: New merchant name
-        amount: New amount
-        date: New date (YYYY-MM-DD)
-        notes: New notes (empty string to clear)
-        hide_from_reports: Hide this transaction from reports
-        needs_review: Mark as needs review
+        transaction_id: The transaction ID to update.
+        category_id: New category ID (use list_categories to find IDs).
+        merchant_name: New merchant name.
+        amount: New amount in dollars.
+        date: New date (YYYY-MM-DD).
+        notes: New notes (empty string to clear).
+        hide_from_reports: Hide this transaction from reports.
+        needs_review: Mark as needs review.
     """
     mm = await get_client()
     kwargs: dict = {"transaction_id": transaction_id}
@@ -309,6 +383,7 @@ async def update_transaction(
 
 
 def main():
+    """Entry point for the monarch-mcp CLI command."""
     mcp.run(transport="stdio")
 
 
