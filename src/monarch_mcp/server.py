@@ -265,6 +265,49 @@ async def set_budget(
     return json.dumps(result, indent=2, default=str)
 
 
+@mcp.tool()
+async def update_transaction(
+    transaction_id: str,
+    category_id: Optional[str] = None,
+    merchant_name: Optional[str] = None,
+    amount: Optional[float] = None,
+    date: Optional[str] = None,
+    notes: Optional[str] = None,
+    hide_from_reports: Optional[bool] = None,
+    needs_review: Optional[bool] = None,
+) -> str:
+    """Update an existing transaction in Monarch Money.
+
+    Args:
+        transaction_id: The transaction ID to update
+        category_id: New category ID (use list_categories to find IDs)
+        merchant_name: New merchant name
+        amount: New amount
+        date: New date (YYYY-MM-DD)
+        notes: New notes (empty string to clear)
+        hide_from_reports: Hide this transaction from reports
+        needs_review: Mark as needs review
+    """
+    mm = await get_client()
+    kwargs: dict = {"transaction_id": transaction_id}
+    if category_id is not None:
+        kwargs["category_id"] = category_id
+    if merchant_name is not None:
+        kwargs["merchant_name"] = merchant_name
+    if amount is not None:
+        kwargs["amount"] = amount
+    if date is not None:
+        kwargs["date"] = date
+    if notes is not None:
+        kwargs["notes"] = notes
+    if hide_from_reports is not None:
+        kwargs["hide_from_reports"] = hide_from_reports
+    if needs_review is not None:
+        kwargs["needs_review"] = needs_review
+    result = await mm.update_transaction(**kwargs)
+    return json.dumps(result, indent=2, default=str)
+
+
 def main():
     mcp.run(transport="stdio")
 
