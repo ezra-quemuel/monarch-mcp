@@ -196,27 +196,36 @@ async def get_budgets(
     today = date.today()
     sd = start_date or today.replace(day=1).isoformat()
     ed = end_date or today.isoformat()
-    data = await mm.get_budgets(start_date=sd, end_date=ed)
+    data = await mm.get_budgets(start_date=sd, end_date=ed, use_legacy_goals=False, use_v2_goals=False)
 
-    # Budget response has a nested structure — extract budget items from groups
-    budget_data = data.get("budgetData", data)
-    if isinstance(budget_data, dict):
-        groups = budget_data.get("budgetCategoryGroups") or budget_data.get("monthlyAmountsByCategory", [])
-        items = []
-        if groups:
-            for group in groups:
-                cats = group.get("categories", group.get("budgetItems", []))
-                if isinstance(cats, list):
-                    items.extend(cats)
-                else:
-                    items.append(group)
-        else:
-            items = [budget_data]
-    else:
-        items = budget_data if isinstance(budget_data, list) else [budget_data]
+    # Build category ID -> name lookup from categoryGroups
+    category_map: dict[str, str] = {}
+    for group in data.get("categoryGroups", []):
+        for cat in group.get("categories", []):
+            category_map[cat["id"]] = cat["name"]
 
-    slimmed = [_slim_budget(b, verbosity) for b in items if b]
-    return json.dumps(slimmed, indent=2, default=str)
+    # Extract per-category budget data
+    budget_data = data.get("budgetData", {})
+    monthly_by_category = budget_data.get("monthlyAmountsByCategory", [])
+
+    items = []
+    for entry in monthly_by_category:
+        cat_id = entry.get("category", {}).get("id")
+        cat_name = category_map.get(cat_id, f"Category {cat_id}")
+        monthly = entry.get("monthlyAmounts", [{}])[0] if entry.get("monthlyAmounts") else {}
+        budgeted = monthly.get("plannedCashFlowAmount") or 0
+        actual = monthly.get("actualAmount") or 0
+        remaining = monthly.get("remainingAmount") or 0
+        if budgeted != 0 or actual != 0:
+            items.append({
+                "categoryId": cat_id,
+                "category": cat_name,
+                "budgeted": budgeted,
+                "actual": actual,
+                "remaining": remaining,
+            })
+
+    return json.dumps(items, indent=2, default=str)
 
 
 @mcp.tool()
