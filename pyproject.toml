@@ -1,0 +1,20 @@
+[project]
+name = "monarch-mcp"
+version = "0.1.0"
+description = "MCP server for Monarch Money"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "monarchmoney>=0.1.15",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/monarch_mcp"]
+
+[project.scripts]
+monarch-mcp = "monarch_mcp.server:main"
