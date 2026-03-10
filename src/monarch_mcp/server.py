@@ -10,7 +10,8 @@ Optionally set MONARCH_MFA_SECRET for accounts with MFA enabled.
 import json
 import os
 from datetime import date
-from typing import Optional
+from functools import wraps
+from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
 from monarchmoney import MonarchMoney
@@ -29,12 +30,8 @@ mcp = FastMCP("monarch-money")
 _client: Optional[MonarchMoney] = None
 
 
-async def get_client() -> MonarchMoney:
-    """Lazy-initialize and cache the authenticated Monarch Money client."""
-    global _client
-    if _client is not None:
-        return _client
-
+async def _login() -> MonarchMoney:
+    """Create and authenticate a new Monarch Money client."""
     email = os.environ.get("MONARCH_EMAIL")
     password = os.environ.get("MONARCH_PASSWORD")
     mfa_secret = os.environ.get("MONARCH_MFA_SECRET")
@@ -52,8 +49,38 @@ async def get_client() -> MonarchMoney:
         save_session=True,
         mfa_secret_key=mfa_secret,
     )
-    _client = mm
+    return mm
+
+
+async def get_client() -> MonarchMoney:
+    """Lazy-initialize and cache the authenticated Monarch Money client."""
+    global _client
+    if _client is not None:
+        return _client
+    _client = await _login()
     return _client
+
+
+async def invalidate_client() -> None:
+    """Clear the cached client so the next call re-authenticates."""
+    global _client
+    _client = None
+
+
+def auto_retry_on_401(fn: Callable) -> Callable:
+    """Decorator that retries a tool function once on 401 Unauthorized."""
+
+    @wraps(fn)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return await fn(*args, **kwargs)
+        except Exception as e:
+            if "401" in str(e) or "Unauthorized" in str(e):
+                await invalidate_client()
+                return await fn(*args, **kwargs)
+            raise
+
+    return wrapper
 
 
 def _slim_account(acct: dict, verbosity: str) -> dict:
@@ -175,6 +202,7 @@ def _extract_items(data: dict, key: str) -> list:
 
 
 @mcp.tool()
+@auto_retry_on_401
 async def get_accounts(verbosity: str = "light") -> str:
     """Get all financial accounts from Monarch Money.
 
@@ -193,6 +221,7 @@ async def get_accounts(verbosity: str = "light") -> str:
 
 
 @mcp.tool()
+@auto_retry_on_401
 async def get_transactions(
     limit: int = 50,
     start_date: Optional[str] = None,
@@ -225,6 +254,7 @@ async def get_transactions(
 
 
 @mcp.tool()
+@auto_retry_on_401
 async def get_budgets(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -284,6 +314,7 @@ async def get_budgets(
 
 
 @mcp.tool()
+@auto_retry_on_401
 async def list_categories() -> str:
     """List all transaction categories from Monarch Money.
 
@@ -309,6 +340,7 @@ async def list_categories() -> str:
 
 
 @mcp.tool()
+@auto_retry_on_401
 async def set_budget(
     category_id: str,
     amount: float,
@@ -338,6 +370,7 @@ async def set_budget(
 
 
 @mcp.tool()
+@auto_retry_on_401
 async def update_transaction(
     transaction_id: str,
     category_id: Optional[str] = None,
